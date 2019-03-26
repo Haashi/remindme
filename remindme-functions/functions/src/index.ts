@@ -4,6 +4,7 @@ import * as express from 'express';
 import * as dayjs from 'dayjs';
 import { isEmpty, isMail } from './utils/validators';
 import * as nodemailer from 'nodemailer';
+import * as cors from 'cors';
 
 // // Start writing Firebase Functions
 // // https://firebase.google.com/docs/functions/typescript
@@ -11,7 +12,7 @@ import * as nodemailer from 'nodemailer';
 
 admin.initializeApp();
 const app = express();
-
+app.use(cors({origin:true}));
 app.post('/jobs', (request, response) => {
 
     const errors: any = {};
