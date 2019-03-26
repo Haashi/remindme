@@ -11,39 +11,6 @@ import * as nodemailer from 'nodemailer';
 
 admin.initializeApp();
 const app = express();
-app.get('/jobs', (request, response) => {
-    admin
-        .firestore()
-        .collection('jobs')
-        .orderBy('date', 'desc')
-        .get()
-        .then(data => {
-            const jobs: any[] = [];
-            data.forEach((doc) => {
-                jobs.push(doc.data());
-            })
-            return response.json(jobs);
-        })
-        .catch(err => console.error(err));
-});
-
-app.get('/jobsToSend', (request, response) => {
-    admin
-        .firestore()
-        .collection('jobs')
-        .orderBy('date', 'asc')
-        .where("sent", "==", false)
-        .where("date", "<", dayjs(Date.now()).toISOString())
-        .get()
-        .then(data => {
-            const jobs: any[] = [];
-            data.forEach((doc) => {
-                jobs.push(doc.data());
-            })
-            return response.json(jobs);
-        })
-        .catch(err => console.error(err));
-});
 
 app.post('/jobs', (request, response) => {
 
@@ -89,55 +56,42 @@ app.post('/jobs', (request, response) => {
 
 export const api = functions.https.onRequest(app);
 
+const gmailEmail = functions.config().gmail.email;
+const gmailPassword = functions.config().gmail.password;
+const mailTransport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: gmailEmail,
+      pass: gmailPassword
+    },
+  });
+
 export const sendMail = functions.pubsub.topic('sendMail').onPublish((message) => {
 
-    const mails: any[] = [];
-
-    admin
+    const promise = (admin
         .firestore()
         .collection('jobs')
         .orderBy('date', 'asc')
         .where("sent", "==", false)
         .where("date", "<", dayjs(Date.now()).toISOString())
-        .get()
+        .get())
         .then(data => {
             data.forEach((doc) => {
-                mails.push(doc.data());
-            })
-        })
-        .catch(err => console.error(err));
-
-
-    const transportPromise = nodemailer.createTestAccount()
-        .then((account) => {
-            return nodemailer.createTransport({
-                host: "smtp.ethereal.email",
-                port: 587,
-                secure: false, // true for 465, false for other ports
-                auth: {
-                    user: account.user, // generated ethereal user
-                    pass: account.pass // generated ethereal password
-                }
-            });
-        });
-
-    transportPromise
-        .then((transporter) => {
-            mails.forEach((mail) => {
+                const mail = doc.data();
+                console.log('Sending mail to '+mail.mail);
                 const mailOptions = {
-                    from: 'remindme@gmail.com', // sender address
-                    to: mail.mail, // list of receivers
-                    subject: mail.content, // Subject line
-                    text: "yes", // plain text body
+                    from: 'remindme@gmail.com',
+                    to: mail.mail,
+                    subject: mail.content,
+                    text: "",
                 };
-                transporter.sendMail(mailOptions)
-                    .then((info) => {
-                        console.info(nodemailer.getTestMessageUrl(info));
+                mailTransport.sendMail(mailOptions)
+                    .then(() => {
+                        admin.firestore().doc(doc.ref.path).update({sent:true}).catch(err => console.error(err));
                     })
                     .catch(err => console.error(err));
-            });
-
+            })
         })
-        .catch(err => console.error(err));
-    return 0;
+    return promise;
 });
+        
